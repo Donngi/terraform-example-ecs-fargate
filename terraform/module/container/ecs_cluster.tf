@@ -10,5 +10,12 @@ resource "aws_ecs_cluster" "example" {
     name  = "containerInsights"
     value = "enabled"
   }
+
+  configuration {
+    execute_command_configuration {
+      kms_key_id = aws_kms_key.ecs_exec.arn
+      logging    = "DEFAULT"
+    }
+  }
 }
 
