@@ -5,7 +5,7 @@ resource "aws_ecs_service" "nginx" {
 
   launch_type      = "FARGATE"
   platform_version = "1.4.0"
-  desired_count    = 2
+  desired_count    = 0
 
   enable_execute_command = true
 
