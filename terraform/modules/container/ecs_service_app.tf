@@ -1,0 +1,64 @@
+resource "aws_ecs_service" "app_nginx" {
+  ### basic
+  name            = "app-nginx-service"
+  cluster         = aws_ecs_cluster.example.id
+  task_definition = aws_ecs_task_definition.app_nginx.arn
+
+  launch_type      = "FARGATE"
+  platform_version = "1.4.0"
+
+  ### deployment
+  desired_count = 1
+
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+
+  scheduling_strategy = "REPLICA"
+
+  deployment_controller {
+    type = "ECS"
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  enable_execute_command = true
+
+  ### network 
+  network_configuration {
+    subnets = var.subnet_private_ids
+    security_groups = [
+      aws_security_group.ecs_app_nginx.id
+    ]
+    assign_public_ip = false
+  }
+
+  service_connect_configuration {
+    enabled = true
+    log_configuration {
+      log_driver = "awslogs"
+      options = {
+        "awslogs-region" : data.aws_region.current.name,
+        "awslogs-group" : aws_cloudwatch_log_group.web_nginx.name,
+        "awslogs-stream-prefix" : "app-ecs-service-connect"
+      }
+    }
+    # ECS Service Connect (Client-service mode)利用時は、service指定が必須。
+    # port_nameをtask definitionで指定したポート名と合わせる
+    service {
+      port_name = "app-nginx-ecs-service-connect-80-tcp"
+      client_alias {
+        port = 80
+      }
+    }
+  }
+
+  ### tag
+  propagate_tags = "SERVICE"
+  tags = {
+    "propagate-from" = "ecs-service"
+  }
+  enable_ecs_managed_tags = true
+}

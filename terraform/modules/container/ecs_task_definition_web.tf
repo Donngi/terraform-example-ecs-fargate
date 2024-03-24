@@ -1,10 +1,10 @@
 # NOTE: コメントアウトされている設定値の値は適当です
 
-resource "aws_ecs_task_definition" "nginx" {
+resource "aws_ecs_task_definition" "web_nginx" {
   ### ------------------------------
   ### タスク定義内のコンテナすべてで共有する設定
   ### ------------------------------
-  family = "nginx"
+  family = "web-nginx"
   cpu    = "256" # 0.25vCPU
   memory = "512"
 
@@ -18,8 +18,8 @@ resource "aws_ecs_task_definition" "nginx" {
     cpu_architecture        = "ARM64"
   }
 
-  execution_role_arn = aws_iam_role.ecs_task_execution.arn
-  task_role_arn      = aws_iam_role.ecs_task.arn
+  execution_role_arn = aws_iam_role.ecs_task_execution_web.arn
+  task_role_arn      = aws_iam_role.ecs_task_web.arn
 
   # pid_mode = "task" # サイドカーコンテナと、プロセスやファイルシステムを共有したい場合はtaskを指定 (https://dev.classmethod.jp/articles/ecs-on-fargate-support-shared-pid-namespace/)
   # ipc_mode = "none" # IPC名前空間の共有範囲の設定。Fargateでは指定不可
@@ -32,8 +32,8 @@ resource "aws_ecs_task_definition" "nginx" {
       ### ------------------------------
       ### 基本情報
       ### ------------------------------
-      "name" : "nginx",
-      "image" : "public.ecr.aws/nginx/nginx:latest",
+      "name" : "web-nginx",
+      "image" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/ecr-public/nginx/nginx:stable"
 
       ### リソース割り当て
       # "cpu" : "256"               # コンテナ単位の割り当てCPU
@@ -48,7 +48,10 @@ resource "aws_ecs_task_definition" "nginx" {
         {
           # awsvpc network mode利用時は、hostPortは指定しない
           "containerPort" : 80,
-          "protocol" : "tcp"
+          "protocol" : "tcp",
+          # ECS Service Connect(Client mode)利用時は、nameの指定は不要
+          # 今回構成では、webコンテナはALB経費でアクセスされるため、Client modeを利用
+          # "name" : "web-nginx-ecs-service-connect"
         }
       ],
 
@@ -57,11 +60,15 @@ resource "aws_ecs_task_definition" "nginx" {
       ### ------------------------------
       "startTimeout" : 60, # コンテナの起動がタイムアウトするまでの時間
       "stopTimeout" : 30,  # コンテナが正常終了しなかった場合に、強制終了させるまでの時間
-      # "entryPoint" : ["sh", "-c"] # docker run コマンドの ENTRYPOINT に相当
-      # "command" : "some command"  # docker run コマンドの CMD に相当
+
+      "entryPoint" : ["sh", "-c"] # docker run コマンドの ENTRYPOINT に相当
+      "command" = [
+        "echo 'server { listen 80; location / { proxy_pass http://app-nginx-ecs-service-connect-80-tcp.example.local; } }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+      ] # docker run コマンドの CMD に相当。今回は、nginxの設定ファイルを書き換えて、port 80でのリクエストをappコンテナに転送する設定を追加(本来は設定ファイルを埋め込んだDockerイメージを利用するべきだが、簡易的に設定)
       # "workingDirectory" : "/"    # コンテナ内の作業ディレクトリを指定
+
       "essential" : true, # このコンテナが停止した場合、タスク全体を停止させるかどうか
-      # "dependsOn" : []            # コンテナ間に開始・終了の依存関係がある場合に利用
+      # "dependsOn" : []  # コンテナ間に開始・終了の依存関係がある場合に利用
 
       ### ------------------------------
       ### ECS Serviceが実行するHealthCheckの設定
@@ -87,8 +94,8 @@ resource "aws_ecs_task_definition" "nginx" {
         "logDriver" : "awslogs",
         "options" : {
           "awslogs-region" : data.aws_region.current.name,
-          "awslogs-group" : aws_cloudwatch_log_group.nginx.name,
-          "awslogs-stream-prefix" : "example"
+          "awslogs-group" : aws_cloudwatch_log_group.web_nginx.name,
+          "awslogs-stream-prefix" : "web-nginx"
         }
       },
       # "firelensConfiguration" : {}, # FireLens(同じタスク定義内に定義したFluentdやFluent Bitコンテナにログを簡単に転送できる機能)を利用する場合に利用

@@ -1,17 +1,13 @@
-variable "subnet_private_a_id" {
+variable "vpc_id" {
   type = string
 }
 
-variable "subnet_private_c_id" {
+variable "cidr_block" {
   type = string
 }
 
-variable "aws_vpc_ecs_fargate_id" {
-  type = string
-}
-
-variable "aws_vpc_ecs_fargate_cidr_block" {
-  type = string
+variable "subnet_private_ids" {
+  type = list(string)
 }
 
 variable "target_group_arn" {
